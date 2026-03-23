@@ -1,6 +1,6 @@
 """
-Task 2 & Task 3 (OOP): Data Processing
-DataProcessor class - Xử lý và làm sạch dữ liệu thời tiết.
+Task 2 & 3: Data Processing
+Cleans and transforms raw weather JSON data into structured pandas DataFrames.
 """
 
 import json
@@ -8,12 +8,11 @@ import os
 import numpy as np
 import pandas as pd
 
-
 class DataProcessor:
-    """Xử lý và làm sạch dữ liệu thời tiết từ raw JSON sang DataFrame."""
+    """Class to manage data cleaning and transformation."""
 
     def __init__(self):
-        """Initialize DataProcessor."""
+        """Initializes raw and processed data directories."""
         base_dir = os.path.dirname(__file__)
         self.raw_dir = os.path.join(base_dir, "..", "data", "raw")
         self.processed_dir = os.path.join(base_dir, "..", "data", "processed")
@@ -21,31 +20,14 @@ class DataProcessor:
         self.df = None
 
     def load_data(self, filename: str = "weather_raw.json") -> list:
-        """
-        Load raw data từ file JSON.
-
-        Args:
-            filename: Tên file JSON trong thư mục data/raw/.
-
-        Returns:
-            List các dict dữ liệu thô.
-        """
+        """Loads entries from the raw JSON file."""
         filepath = os.path.join(self.raw_dir, filename)
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        print(f"  [OK] Loaded raw data: {filepath}")
         return data
 
     def clean_data(self, raw_data: list) -> pd.DataFrame:
-        """
-        Parse JSON, làm phẳng dữ liệu, xử lý missing values và tạo cột dẫn xuất.
-
-        Args:
-            raw_data: List các dict raw data từng thành phố.
-
-        Returns:
-            DataFrame đã được làm sạch.
-        """
+        """Parses, cleans, and generates features from raw weather JSON data."""
         records = []
         for city_data in raw_data:
             city_name = city_data.get("city", "Unknown")
@@ -67,37 +49,29 @@ class DataProcessor:
                 })
 
         df = pd.DataFrame(records)
-
-        # Convert data types
         df["date"] = pd.to_datetime(df["date"])
 
-        # Convert numeric columns using numpy
+        # Convert to numeric and fill NaN values with each city's average
         num_cols = ["temp_max", "temp_min", "temp_mean", "precipitation", "wind_speed", "humidity"]
         for col in num_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        # Handle missing values - fill with column mean per city
         df[num_cols] = df.groupby("city")[num_cols].transform(lambda x: x.fillna(x.mean()))
 
-        # Derived columns
+        # Extract basic date components
         df["year"]  = df["date"].dt.year
         df["month"] = df["date"].dt.month
         df["day"]   = df["date"].dt.day
 
-        # Season (Mùa theo lịch Việt Nam)
+        # Define seasons based on the Vietnamese calendar
         def get_season(month):
-            if month in [12, 1, 2]:
-                return "Đông"
-            elif month in [3, 4, 5]:
-                return "Xuân"
-            elif month in [6, 7, 8]:
-                return "Hè"
-            else:
-                return "Thu"
+            if month in [12, 1, 2]: return "Winter"
+            elif month in [3, 4, 5]: return "Spring"
+            elif month in [6, 7, 8]: return "Summer"
+            else: return "Autumn"
 
         df["season"] = df["month"].apply(get_season)
 
-        # Flag extreme days
+        # Flag weather extremes: Nắng nóng (>35°C) and Mưa lớn (>50mm)
         df["is_hot_day"]   = df["temp_max"] > 35
         df["is_rainy_day"] = df["precipitation"] > 50
 
@@ -105,16 +79,11 @@ class DataProcessor:
         return df
 
     def export_results(self, filename: str = "weather_cleaned.csv"):
-        """
-        Xuất DataFrame đã xử lý ra file CSV.
-
-        Args:
-            filename: Tên file CSV đầu ra.
-        """
+        """Exports the processed DataFrame to a CSV file."""
         if self.df is None:
-            print("  [ERROR] Chưa có dữ liệu để xuất. Hãy chạy clean_data() trước.")
+            print("  [ERROR] No data to export. Run clean_data() first.")
             return
 
         filepath = os.path.join(self.processed_dir, filename)
         self.df.to_csv(filepath, index=False, encoding="utf-8-sig")
-        print(f"  [OK] Đã xuất cleaned data: {filepath}")
+        print(f"  [OK] Exported cleaned data to: {filepath}")

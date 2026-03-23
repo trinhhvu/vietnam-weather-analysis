@@ -1,12 +1,12 @@
 """
-Frontend Dashboard - Giao diện trực quan hóa thời tiết Việt Nam.
+Frontend Dashboard - Visualizing Vietnam Weather Data.
 
-QUAN TRỌNG: File này KHÔNG chứa bất kỳ logic xử lý dữ liệu nào.
-Mọi dữ liệu được lấy từ Backend API (Flask) qua HTTP requests.
+IMPORTANT: This file DOES NOT contain data processing logic.
+All data is fetched from the Backend API (Flask) via HTTP requests.
 
-Frontend chỉ làm 2 việc:
-  1. Gọi API từ Backend
-  2. Hiển thị dữ liệu lên giao diện Streamlit
+Frontend tasks:
+  1. Call Backend API
+  2. Display data using Streamlit
 
 Usage:
     streamlit run frontend/dashboard.py
@@ -23,32 +23,8 @@ import os
 import sys
 
 # ------------------------------------------------------------------ #
-# HỖ TRỢ DEPLOY (Tự động khởi động Backend API)                       #
+# PAGE CONFIGURATION                                                  #
 # ------------------------------------------------------------------ #
-def ensure_backend_running():
-    """Kiểm tra và khởi động Backend API nếu chưa chạy."""
-    try:
-        # Thử gọi API để kiểm tra trạng thái
-        requests.get("http://localhost:5001/api/cities", timeout=1)
-    except:
-        # Nếu lỗi (chưa chạy) -> khởi động backend/api.py
-        with st.spinner("⏳ Đang khởi động Backend API..."):
-            backend_script = os.path.join(os.getcwd(), "backend", "api.py")
-            if os.path.exists(backend_script):
-                subprocess.Popen([sys.executable, backend_script])
-                time.sleep(5)  # Đợi 5s để Flask kịp khởi động
-            else:
-                st.error(f"❌ Không tìm thấy file backend: {backend_script}")
-                st.stop()
-
-# Gọi hàm kiểm tra ngay khi load dashboard
-ensure_backend_running()
-
-# ------------------------------------------------------------------ #
-# CẤU HÌNH                                                            #
-# ------------------------------------------------------------------ #
-API_BASE = "http://localhost:5001"
-
 st.set_page_config(
     page_title="Vietnam Weather Dashboard",
     page_icon="☀️",
@@ -56,12 +32,92 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+API_BASE = "http://localhost:5001"
+
 # ------------------------------------------------------------------ #
-# CUSTOM CSS - Giao diện iOS Weather (Glassmorphism)                   #
+# LOADING / WAIT FOR BACKEND                                          #
+# ------------------------------------------------------------------ #
+def check_backend():
+    """Check if the backend is responding."""
+    try:
+        requests.get(f"{API_BASE}/api/cities", timeout=1)
+        return True
+    except:
+        return False
+
+def show_loading_screen():
+    """A visual splash screen during initial startup."""
+    placeholder = st.empty()
+    
+    with placeholder.container():
+        st.markdown("""
+            <style>
+            .loader-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 70vh;
+                text-align: center;
+            }
+            .spinner-io {
+                width: 80px;
+                height: 80px;
+                border: 8px solid rgba(255, 255, 255, 0.1);
+                border-top: 8px solid #a5c9ff;
+                border-radius: 50%;
+                animation: spin_io 1.5s linear infinite;
+                margin-bottom: 20px;
+            }
+            @keyframes spin_io {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            .loading-text {
+                font-family: 'Outfit', sans-serif;
+                font-size: 1.5rem;
+                color: #a5c9ff;
+                font-weight: 600;
+                letter-spacing: 2px;
+            }
+            </style>
+            <div class="loader-container">
+                <div class="spinner-io"></div>
+                <div class="loading-text">INITIALIZING ANALYSIS SYSTEM...</div>
+                <p style='color: #888; margin-top: 10px;'>Connecting to Backend API (Port 5001)</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Attempt to start backend if not running
+        if not check_backend():
+            backend_script = os.path.join(os.getcwd(), "backend", "api.py")
+            if os.path.exists(backend_script):
+                subprocess.Popen([sys.executable, backend_script])
+            
+            # Wait up to 15 seconds
+            for i in range(15):
+                time.sleep(1)
+                if check_backend():
+                    break
+        
+        if not check_backend():
+            st.error("❌ Connection failed. Please check backend/api.py")
+            st.stop()
+            
+    # Remove loading screen after success
+    placeholder.empty()
+
+# Show splash screen on first session load
+if "loaded" not in st.session_state:
+    show_loading_screen()
+    st.session_state["loaded"] = True
+
+# ------------------------------------------------------------------ #
+# CUSTOM CSS - iOS Weather Style (Glassmorphism)                      #
 # ------------------------------------------------------------------ #
 st.markdown("""
     <style>
-    /* Tổng thể và Font */
+    /* Global and Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
     
     html, body, [data-testid="stAppViewContainer"] {
@@ -135,19 +191,19 @@ st.markdown("""
 
 
 # ------------------------------------------------------------------ #
-# HELPER: Gọi API từ Backend                                          #
+# HELPER: API Fetcher                                                 #
 # ------------------------------------------------------------------ #
 def call_api(endpoint, params=None):
-    """Gọi Backend API và trả về JSON response."""
+    """Fetch data from Backend API and return JSON."""
     try:
         resp = requests.get(f"{API_BASE}{endpoint}", params=params, timeout=10)
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.ConnectionError:
-        st.error("❌ Không thể kết nối Backend API! Hãy chạy `python backend/api.py` trước.")
+        st.error("❌ Cannot connect to Backend API! Please run `python backend/api.py` first.")
         st.stop()
     except Exception as e:
-        st.error(f"❌ Lỗi khi gọi API: {e}")
+        st.error(f"❌ API Error: {e}")
         st.stop()
 
 
@@ -156,20 +212,20 @@ def call_api(endpoint, params=None):
 # ------------------------------------------------------------------ #
 st.sidebar.title("☁️ Weather Menu")
 
-# Lấy danh sách cities & years từ API
+# Fetch cities & years from API
 meta = call_api("/api/cities")
 all_cities = meta["cities"]
 all_years = meta["years"]
 
-city_list = ["Tất cả"] + all_cities
-selected_city = st.sidebar.selectbox("Chọn Thành phố", city_list)
+city_list = all_cities
+selected_cities = st.sidebar.multiselect("Select Cities", city_list, default=all_cities)
 
-selected_year = st.sidebar.multiselect("Chọn Năm", all_years, default=all_years)
+selected_year = st.sidebar.multiselect("Select Year", all_years, default=all_years)
 
-# Build query params cho API
+# Build query params for API
 api_params = {}
-if selected_city != "Tất cả":
-    api_params["city"] = selected_city
+if selected_cities:
+    api_params["city"] = ",".join(selected_cities)
 if selected_year:
     api_params["year"] = ",".join(map(str, selected_year))
 
@@ -177,41 +233,44 @@ if selected_year:
 # ------------------------------------------------------------------ #
 # MAIN PAGE                                                            #
 # ------------------------------------------------------------------ #
-st.title("🇻🇳 Báo Cáo Thời Tiết Việt Nam")
-st.subheader(f"Dữ liệu: {selected_city if selected_city != 'Tất cả' else 'Toàn quốc'} ({', '.join(map(str, selected_year))})")
+st.title("🇻🇳 Vietnam Weather Analysis Report")
 
-# 1. KPI Metrics — lấy từ /api/summary
+# Display city names in subheader
+city_display = "All Cities" if len(selected_cities) == len(all_cities) else ", ".join(selected_cities)
+st.subheader(f"Dataset: {city_display} ({', '.join(map(str, selected_year))})")
+
+# 1. KPI Metrics — from /api/summary
 summary = call_api("/api/summary", api_params)
 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     st.markdown(f"""<div class="metric-card">
-        <div class="metric-label">Nhiệt độ TB</div>
+        <div class="metric-label">Avg Temperature</div>
         <div class="metric-value">{summary['avg_temp']:.1f}°C</div>
     </div>""", unsafe_allow_html=True)
 
 with col2:
     st.markdown(f"""<div class="metric-card">
-        <div class="metric-label">Cao nhất</div>
+        <div class="metric-label">Max Temp</div>
         <div class="metric-value" style="color: #ff6b6b;">{summary['max_temp']:.1f}°C</div>
     </div>""", unsafe_allow_html=True)
 
 with col3:
     st.markdown(f"""<div class="metric-card">
-        <div class="metric-label">Thấp nhất</div>
+        <div class="metric-label">Min Temp</div>
         <div class="metric-value" style="color: #4facfe;">{summary['min_temp']:.1f}°C</div>
     </div>""", unsafe_allow_html=True)
 
 with col4:
     st.markdown(f"""<div class="metric-card">
-        <div class="metric-label">Lượng mưa tổng</div>
+        <div class="metric-label">Total Rainfall</div>
         <div class="metric-value">{summary['total_rain']:,.0f} mm</div>
     </div>""", unsafe_allow_html=True)
 
 st.write("")  # Spacer
 
-# 2. Charts — lấy dữ liệu từ /api/data
+# 2. Charts — from /api/data
 data_response = call_api("/api/data", api_params)
 filtered_df = pd.DataFrame(data_response["data"])
 
@@ -222,11 +281,11 @@ if not filtered_df.empty:
 
     with c1:
         st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-        st.write("### 📈 Xu hướng nhiệt độ")
+        st.write("### 📈 Temperature Trends")
         trend_df = filtered_df.groupby(['date', 'city'])['temp_mean'].mean().reset_index()
         fig_line = px.line(
             trend_df, x='date', y='temp_mean', color='city',
-            labels={'temp_mean': 'Nhiệt độ (°C)', 'date': 'Thời gian'},
+            labels={'temp_mean': 'Temperature (°C)', 'date': 'Time'},
             template="plotly_dark",
             color_discrete_sequence=px.colors.qualitative.Safe
         )
@@ -236,7 +295,7 @@ if not filtered_df.empty:
 
     with c2:
         st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-        st.write("### 🌡️ Phân bố nhiệt độ")
+        st.write("### 🌡️ Temp Distribution")
         fig_box = px.box(
             filtered_df, x='city', y='temp_mean', color='city',
             template="plotly_dark"
@@ -247,52 +306,70 @@ if not filtered_df.empty:
 
     # 3. Heatmap
     st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-    st.write("### 🗓️ Heatmap: Nhiệt độ TB theo tháng")
+    st.write("### 🗓️ Heatmap: Avg Temp by Month")
     pivot = filtered_df.pivot_table(
         values="temp_mean", index="city", columns="month", aggfunc="mean"
     )
     fig_heat = px.imshow(
         pivot, text_auto=".1f", aspect="auto",
         color_continuous_scale="RdYlBu_r",
-        labels=dict(x="Tháng", y="Thành phố", color="Temp"),
+        labels=dict(x="Month", y="City", color="Temp"),
         template="plotly_dark"
     )
     st.plotly_chart(fig_heat, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 4. Insights — lấy từ /api/insights
-    st.write("### 💡 Phân tích & Nhận xét")
+    # 4. Insights — from /api/insights
+    st.write("### 💡 Insights & Analysis")
     insights = call_api("/api/insights")
 
     i1, i2 = st.columns(2)
     with i1:
         st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-        st.write("#### 🌡️ Đặc điểm nhiệt độ")
+        st.write("#### 🌡️ Temp Characteristics")
         st.markdown(f"""
-        - **Nóng nhất:** {insights['largest_temp_range_city']} có biên độ nhiệt **{insights['largest_temp_range_value']}°C**.
-        - **Nhiệt độ đỉnh:** **{insights['peak_temp']}°C** | Thấp nhất: **{insights['lowest_temp']}°C**
-        - **TB toàn quốc:** **{insights['avg_temp_nationwide']}°C**
+        - **Hottest:** {insights['largest_temp_range_city']} has a temp range of **{insights['largest_temp_range_value']}°C**.
+        - **Peak Temp:** **{insights['peak_temp']}°C** | Lowest: **{insights['lowest_temp']}°C**
+        - **National Avg:** **{insights['avg_temp_nationwide']}°C**
         """)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with i2:
         st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-        st.write("#### 🌧️ Lượng mưa & Cực đoan")
+        st.write("#### 🌧️ Rainfall & Extremes")
         hot_total = sum(insights["hot_days_by_city"].values())
         rainy_total = sum(insights["rainy_days_by_city"].values())
         wettest = insights["wettest_month_by_region"]
         st.markdown(f"""
-        - **Sự kiện cực đoan:** **{hot_total}** ngày nắng nóng (>35°C) và **{rainy_total}** ngày mưa lớn (>50mm).
-        - **Mưa nhiều nhất:** Bắc (T{wettest.get('Bắc','?')}), Trung (T{wettest.get('Trung','?')}), Nam (T{wettest.get('Nam','?')})
+        - **Extreme events:** **{hot_total}** heatwave days (>35°C) and **{rainy_total}** heavy rain days (>50mm).
+        - **Wettest Month:** North ({wettest.get('Bắc','?')}), Central ({wettest.get('Trung','?')}), South ({wettest.get('Nam','?')})
         """)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # 5. Data Table
-    with st.expander("🔍 Xem dữ liệu chi tiết"):
+    with st.expander("🔍 View detailed data"):
         st.dataframe(filtered_df.sort_values('date', ascending=False).head(100), use_container_width=True)
 
 else:
-    st.warning("Không có dữ liệu phù hợp với bộ lọc đã chọn.")
+    st.warning("No data matches the selected filters.")
+
+# ------------------------------------------------------------------ #
+# FOOTER                                                              #
+# ------------------------------------------------------------------ #
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"""
+    <div style='text-align: center; opacity: 0.8;'>
+        <p>Developed by</p>
+        <a href='https://github.com/trinhhvu' target='_blank' style='text-decoration: none;'>
+            <img src='https://img.shields.io/badge/GitHub-trinhhvu-blue?style=for-the-badge&logo=github' alt='GitHub'>
+        </a>
+    </div>
+""", unsafe_allow_html=True)
 
 st.markdown("---")
-st.markdown("<p style='text-align: center; opacity: 0.7;'>Vietnam Weather Analysis Project | PDS301m Assignment</p>", unsafe_allow_html=True)
+st.markdown("""
+    <p style='text-align: center; opacity: 0.7;'>
+        <b>Vietnam Weather Analysis Project</b> | PDS301m Assignment <br>
+        Developed by <a href='https://github.com/trinhhvu' target='_blank' style='color: #a5c9ff; text-decoration: none;'>@trinhhvu</a>
+    </p>
+""", unsafe_allow_html=True)
