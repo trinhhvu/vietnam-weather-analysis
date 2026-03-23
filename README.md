@@ -58,11 +58,6 @@ ASM/
 ├── requirements.txt
 └── README.md
 ```
-
-### Nguyên tắc phân tách:
-- **Backend** chứa **toàn bộ** logic xử lý theo yêu cầu đề bài (Task 1→5).
-- **Frontend** chỉ gọi API từ Backend qua HTTP requests rồi hiển thị — **không import bất kỳ class nào** từ Backend.
-
 ---
 
 ## 📊 Key Findings
