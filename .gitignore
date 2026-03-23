@@ -15,9 +15,9 @@ build/
 venv/
 ENV/
 
-# Data files (large raw data - exclude from git)
-data/raw/weather_raw.json
-data/processed/weather_cleaned.csv
+# Data files (included in git for fast Cloud deployment)
+# backend/data/raw/weather_raw.json
+# backend/data/processed/weather_cleaned.csv
 
 # IDE
 .vscode/

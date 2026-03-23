@@ -22,24 +22,25 @@ from weather_collector import WeatherCollector
 
 app = Flask(__name__)
 
+# Load data once at server startup
+print("[API] Initializing data layer...")
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+raw_path = os.path.join(backend_dir, "data", "raw", "weather_raw.json")
+
 def _load_data():
     """Initial data load and processing on startup."""
-    backend_dir = os.path.dirname(os.path.abspath(__file__))
-    raw_path = os.path.join(backend_dir, "data", "raw", "weather_raw.json")
-
     if not os.path.exists(raw_path):
-        print("[API] Data not found. Collecting from Open-Meteo...")
+        print(f"[API] Data not found at {raw_path}. Collecting from Open-Meteo...")
         WeatherCollector().collect_all()
 
     processor = DataProcessor()
+    # Process relative to data directory
     raw_data = processor.load_data("weather_raw.json")
     return processor.clean_data(raw_data)
 
-# Load data once at server startup
-print("[API] Loading data...")
 df = _load_data()
 analyzer = WeatherAnalyzer(df)
-print(f"[API] Ready! ({len(df)} records)")
+print(f"[API] Ready! ({len(df)} records loaded)")
 
 def _df_to_json(dataframe):
     """Convert DataFrame to list of dicts with string dates."""

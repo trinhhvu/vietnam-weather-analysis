@@ -17,10 +17,23 @@ import requests
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import subprocess
+import threading
 import time
-import os
 import sys
+import os
+
+# Add root directory to sys.path to allow importing from backend
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+try:
+    from backend.api import app as flask_app
+except ImportError:
+    st.error("❌ Could not import backend.api. Ensure project structure is correct.")
+    st.stop()
+
+def run_backend():
+    """Run the Flask app in a separate thread."""
+    flask_app.run(port=5001, debug=False, use_reloader=False)
 
 # ------------------------------------------------------------------ #
 # PAGE CONFIGURATION                                                  #
@@ -84,24 +97,24 @@ def show_loading_screen():
             <div class="loader-container">
                 <div class="spinner-io"></div>
                 <div class="loading-text">INITIALIZING ANALYSIS SYSTEM...</div>
-                <p style='color: #888; margin-top: 10px;'>Connecting to Backend API (Port 5001)</p>
+                <p style='color: #888; margin-top: 10px;'>Warming up Backend API (Port 5001)</p>
             </div>
         """, unsafe_allow_html=True)
 
-        # Attempt to start backend if not running
+        # Attempt to start backend in a thread if not responding
         if not check_backend():
-            backend_script = os.path.join(os.getcwd(), "backend", "api.py")
-            if os.path.exists(backend_script):
-                subprocess.Popen([sys.executable, backend_script])
+            thread = threading.Thread(target=run_backend, daemon=True)
+            thread.start()
             
-            # Wait up to 15 seconds
-            for i in range(15):
+            # Wait up to 10 seconds for initial load
+            for i in range(10):
                 time.sleep(1)
                 if check_backend():
                     break
         
         if not check_backend():
-            st.error("❌ Connection failed. Please check backend/api.py")
+            st.error("❌ Connection failed. The background API cannot be reached.")
+            st.warning("Please ensure port 5001 is available.")
             st.stop()
             
     # Remove loading screen after success
@@ -280,7 +293,6 @@ if not filtered_df.empty:
     c1, c2 = st.columns([2, 1])
 
     with c1:
-        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
         st.write("### 📈 Temperature Trends")
         trend_df = filtered_df.groupby(['date', 'city'])['temp_mean'].mean().reset_index()
         fig_line = px.line(
@@ -289,12 +301,14 @@ if not filtered_df.empty:
             template="plotly_dark",
             color_discrete_sequence=px.colors.qualitative.Safe
         )
-        fig_line.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        fig_line.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=20, r=20, t=50, b=20)
+        )
         st.plotly_chart(fig_line, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with c2:
-        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
         st.write("### 🌡️ Temp Distribution")
         fig_box = px.box(
             filtered_df, x='city', y='temp_mean', color='city',
@@ -302,10 +316,9 @@ if not filtered_df.empty:
         )
         fig_box.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
         st.plotly_chart(fig_box, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # 3. Heatmap
-    st.markdown('<div class="chart-box">', unsafe_allow_html=True)
+    st.write("---")
     st.write("### 🗓️ Heatmap: Avg Temp by Month")
     pivot = filtered_df.pivot_table(
         values="temp_mean", index="city", columns="month", aggfunc="mean"
@@ -317,7 +330,6 @@ if not filtered_df.empty:
         template="plotly_dark"
     )
     st.plotly_chart(fig_heat, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
     # 4. Insights — from /api/insights
     st.write("### 💡 Insights & Analysis")
@@ -325,26 +337,30 @@ if not filtered_df.empty:
 
     i1, i2 = st.columns(2)
     with i1:
-        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-        st.write("#### 🌡️ Temp Characteristics")
         st.markdown(f"""
-        - **Hottest:** {insights['largest_temp_range_city']} has a temp range of **{insights['largest_temp_range_value']}°C**.
-        - **Peak Temp:** **{insights['peak_temp']}°C** | Lowest: **{insights['lowest_temp']}°C**
-        - **National Avg:** **{insights['avg_temp_nationwide']}°C**
-        """)
-        st.markdown('</div>', unsafe_allow_html=True)
+        <div class="chart-box">
+            <h4 style='margin-top:0;'>🌡️ Temp Characteristics</h4>
+            <ul style='margin-bottom:0;'>
+                <li><b>Hottest:</b> {insights['largest_temp_range_city']} has a temp range of <b>{insights['largest_temp_range_value']}°C</b>.</li>
+                <li><b>Peak Temp:</b> <b>{insights['peak_temp']}°C</b> | Lowest: <b>{insights['lowest_temp']}°C</b></li>
+                <li><b>National Avg:</b> <b>{insights['avg_temp_nationwide']}°C</b></li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
     with i2:
-        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-        st.write("#### 🌧️ Rainfall & Extremes")
         hot_total = sum(insights["hot_days_by_city"].values())
         rainy_total = sum(insights["rainy_days_by_city"].values())
         wettest = insights["wettest_month_by_region"]
         st.markdown(f"""
-        - **Extreme events:** **{hot_total}** heatwave days (>35°C) and **{rainy_total}** heavy rain days (>50mm).
-        - **Wettest Month:** North ({wettest.get('Bắc','?')}), Central ({wettest.get('Trung','?')}), South ({wettest.get('Nam','?')})
-        """)
-        st.markdown('</div>', unsafe_allow_html=True)
+        <div class="chart-box">
+            <h4 style='margin-top:0;'>🌧️ Rainfall & Extremes</h4>
+            <ul style='margin-bottom:0;'>
+                <li><b>Extreme events:</b> <b>{hot_total}</b> heatwave days (>35°C) and <b>{rainy_total}</b> heavy rain days (>50mm).</li>
+                <li><b>Wettest Month:</b> North ({wettest.get('Bắc','?')}), Central ({wettest.get('Trung','?')}), South ({wettest.get('Nam','?')})</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
     # 5. Data Table
     with st.expander("🔍 View detailed data"):
