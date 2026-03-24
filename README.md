@@ -8,6 +8,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?style=flat-square&logo=streamlit)](https://streamlit.io/)
 [![Plotly](https://img.shields.io/badge/Plotly-Interactive_Charts-3F4F75?style=flat-square&logo=plotly)](https://plotly.com/)
 [![Status](https://img.shields.io/badge/Status-Completed-brightgreen?style=flat-square)]()
+[![Live Demo](https://img.shields.io/badge/Live-Streamlit_Dashboard-FF4B4B?style=for-the-badge&logo=streamlit)](https://vietnam-weather.streamlit.app/)
 
 ---
 
